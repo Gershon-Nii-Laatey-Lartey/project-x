@@ -5,6 +5,7 @@ import { CasioChart } from '@/components/casio-chart';
 import { CasioGallery } from '@/components/casio-gallery';
 import { CasioSettings } from '@/components/casio-settings';
 import { CasioSketch } from '@/components/casio-sketch';
+import { CasioTelegram } from '@/components/casio-telegram';
 import { CasioStatusBar } from '@/components/casio-status-bar';
 import { CasioTable } from '@/components/casio-table';
 import { LCDGrid } from '@/components/lcd-grid';
@@ -42,7 +43,8 @@ export default function HomeScreen() {
   const [sessionName, setSessionName] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string, username: string } | null>(null);
-  const [currentView, setCurrentView] = useState<'chat' | 'more' | 'history' | 'gallery' | 'imagePicker' | 'settings' | 'auth' | 'subjects' | 'subjectPapers' | 'attachmentOptions'>('chat');
+  const [currentView, setCurrentView] = useState<'chat' | 'more' | 'history' | 'gallery' | 'imagePicker' | 'settings' | 'auth' | 'subjects' | 'subjectPapers' | 'attachmentOptions' | 'telegram'>('chat');
+  const [telegramInput, setTelegramInput] = useState('');
   const [history, setHistory] = useState<any[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -974,6 +976,12 @@ export default function HomeScreen() {
                           </View>
                           <Text style={styles.moreIconLabel}>GALLERY</Text>
                         </Pressable>
+                        <Pressable style={styles.moreIconWrapper} onPress={() => setCurrentView('telegram')}>
+                          <View style={styles.moreIconCircle}>
+                            <Ionicons name="paper-plane-outline" size={24} color="#003399" />
+                          </View>
+                          <Text style={styles.moreIconLabel}>TELEGRAM</Text>
+                        </Pressable>
                         <Pressable style={styles.moreIconWrapper} onPress={() => setCurrentView('settings')}>
                           <View style={styles.moreIconCircle}>
                             <Ionicons name="settings-outline" size={24} color="#003399" />
@@ -1140,6 +1148,8 @@ export default function HomeScreen() {
                         }}
                       />
                     )
+                  ) : currentView === 'telegram' ? (
+                    <CasioTelegram onClose={() => setCurrentView('more')} />
                   ) : currentView === 'settings' ? (
                     <CasioSettings
                       onClose={() => setCurrentView('more')}
