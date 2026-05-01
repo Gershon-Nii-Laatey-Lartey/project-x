@@ -5,7 +5,9 @@ import * as MediaLibrary from 'expo-media-library';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
+    Linking,
     Pressable,
     StyleSheet,
     Text,
@@ -147,6 +149,17 @@ export const CasioGallery = ({ onClose, onSelect }: CasioGalleryProps) => {
 
     const openCameraMode = async () => {
         if (!cameraPermission?.granted) {
+            if (!cameraPermission?.canAskAgain) {
+                Alert.alert(
+                    "Camera Permission",
+                    "Camera access is required to take photos. Please enable it in your device settings.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Settings", onPress: () => Linking.openSettings() }
+                    ]
+                );
+                return;
+            }
             const res = await requestCameraPermission();
             if (!res.granted) return;
         }
@@ -156,10 +169,25 @@ export const CasioGallery = ({ onClose, onSelect }: CasioGalleryProps) => {
     };
 
     if (!mediaPermission?.granted) {
+        const handleRequestMedia = async () => {
+            if (!mediaPermission?.canAskAgain) {
+                Alert.alert(
+                    "Media Permission",
+                    "Media access is required to view your gallery. Please enable it in your device settings.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Settings", onPress: () => Linking.openSettings() }
+                    ]
+                );
+                return;
+            }
+            await requestMediaPermission();
+        };
+
         return (
             <View style={styles.permBox}>
                 <Text style={styles.permText}>MEDIA ACCESS REQUIRED</Text>
-                <Pressable style={styles.permBtn} onPress={requestMediaPermission}>
+                <Pressable style={styles.permBtn} onPress={handleRequestMedia}>
                     <Text style={styles.permBtnText}>ALLOW</Text>
                 </Pressable>
                 <Pressable style={styles.closeTopRight} onPress={onClose}>
