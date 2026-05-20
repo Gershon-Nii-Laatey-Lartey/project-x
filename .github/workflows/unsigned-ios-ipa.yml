@@ -43,8 +43,10 @@ jobs:
             exit 1
           fi
 
-          xcodebuild -list -json -workspace "$WORKSPACE" > xcodebuild-list.json
-          SCHEME="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('xcodebuild-list.json','utf8')); const schemes=data.workspace?.schemes ?? []; const scheme=schemes.find((name)=>name !== 'Pods') ?? schemes[0]; if (!scheme) process.exit(1); console.log(scheme);")"
+          echo "Available schemes:"
+          xcodebuild -list -workspace "$WORKSPACE"
+
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
           echo "Using workspace: $WORKSPACE"
           echo "Using scheme: $SCHEME"
 
@@ -55,6 +57,7 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             -quiet \
+            build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
