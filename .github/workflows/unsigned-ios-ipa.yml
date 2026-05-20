@@ -1,0 +1,87 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned app
+        working-directory: ios
+        shell: bash
+        run: |
+          set -eo pipefail
+
+          WORKSPACE="$(find . -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "No Xcode workspace was generated."
+            exit 1
+          fi
+
+          xcodebuild -list -json -workspace "$WORKSPACE" > xcodebuild-list.json
+          SCHEME="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('xcodebuild-list.json','utf8')); const schemes=data.workspace?.schemes ?? []; const scheme=schemes.find((name)=>name !== 'Pods') ?? schemes[0]; if (!scheme) process.exit(1); console.log(scheme);")"
+          echo "Using workspace: $WORKSPACE"
+          echo "Using scheme: $SCHEME"
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package unsigned IPA
+        working-directory: ios
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find build -name '*.app' -type d -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app was found in the Xcode build output."
+            find build -maxdepth 4 -type d | sort
+            exit 1
+          fi
+
+          rm -rf Payload unsigned-ipa
+          mkdir -p Payload unsigned-ipa
+          cp -R "$APP_PATH" Payload/
+          zip -qry unsigned-ipa/my-app-unsigned.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-app-unsigned-ipa
+          path: ios/unsigned-ipa/my-app-unsigned.ipa
+          if-no-files-found: error

@@ -33,7 +33,7 @@ interface ScrapedMessage {
   sent_at: string | null;
 }
 
-async function scrapeChannel(username: string): Promise<ScrapedMessage[]> {
+async function scrapeChannel(username: string): Promise<{ messages: ScrapedMessage[]; photoUrl: string | null }> {
   const url = `https://t.me/s/${username}`;
   const res = await fetch(url, {
     headers: {
@@ -48,7 +48,9 @@ async function scrapeChannel(username: string): Promise<ScrapedMessage[]> {
 
   const html = await res.text();
   const doc = new DOMParser().parseFromString(html, "text/html");
-  if (!doc) return [];
+  if (!doc) return { messages: [], photoUrl: null };
+
+  const photoUrl = doc.querySelector(".tgme_page_photo_image img")?.getAttribute("src") || null;
 
   const messages: ScrapedMessage[] = [];
   const messageEls = doc.querySelectorAll(".tgme_widget_message_wrap");
@@ -135,7 +137,7 @@ async function scrapeChannel(username: string): Promise<ScrapedMessage[]> {
     }
   }
 
-  return messages;
+  return { messages, photoUrl };
 }
 
 async function downloadAndStore(
@@ -195,7 +197,43 @@ async function pollChannels() {
 
   for (const channel of channels) {
     try {
-      const messages = await scrapeChannel(channel.channel_username);
+      const { messages, photoUrl } = await scrapeChannel(channel.channel_username);
+      console.log(`[${channel.channel_username}] Scraped ${messages.length} messages. Found photoUrl: ${photoUrl}`);
+      console.log(`[${channel.channel_username}] Current DB channel_photo_url: ${channel.channel_photo_url}`);
+
+      // If channel is missing a photo, download and update it
+      if (!channel.channel_photo_url && photoUrl) {
+        console.log(`[${channel.channel_username}] Attempting to download and save avatar...`);
+        try {
+          const photoRes = await fetch(photoUrl);
+          console.log(`[${channel.channel_username}] Fetch avatar status: ${photoRes.status}`);
+          if (photoRes.ok) {
+            const buf = await photoRes.arrayBuffer();
+            const photoPath = `telegram/_avatars/${channel.channel_username}.jpg`;
+            const { error: uploadErr } = await supabase.storage.from("papers").upload(photoPath, new Uint8Array(buf), { upsert: true });
+            
+            if (uploadErr) {
+              console.error(`[${channel.channel_username}] Avatar upload error:`, uploadErr);
+            } else {
+              const { data } = supabase.storage.from("papers").getPublicUrl(photoPath);
+              console.log(`[${channel.channel_username}] Uploaded avatar to storage. Public URL: ${data.publicUrl}`);
+              
+              const { error: updateErr } = await supabase.from("telegram_channels").update({ channel_photo_url: data.publicUrl }).eq("id", channel.id);
+              if (updateErr) {
+                console.error(`[${channel.channel_username}] DB update error:`, updateErr);
+              } else {
+                console.log(`[${channel.channel_username}] Avatar successfully updated in database!`);
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`[${channel.channel_username}] Failed to download channel avatar:`, e);
+        }
+      } else if (channel.channel_photo_url) {
+        console.log(`[${channel.channel_username}] Skipping avatar update (already exists).`);
+      } else {
+        console.log(`[${channel.channel_username}] Skipping avatar update (no photoUrl found on page).`);
+      }
 
       for (const msg of messages) {
         // Skip already-seen messages
