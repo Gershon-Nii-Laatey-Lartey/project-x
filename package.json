@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "railway:start": "node ./scripts/patch-expo-ngrok-timeout.js && expo start --tunnel --port ${PORT:-8081}",
+    "railway:start": "node ./scripts/patch-expo-ngrok-timeout.js && node ./scripts/railway-start-expo.js",
     "lint": "expo lint"
   },
   "dependencies": {
