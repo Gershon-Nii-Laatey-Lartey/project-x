@@ -51,10 +51,11 @@ async function printTunnelUrlsWhenReady() {
   console.warn("Expo tunnel URL was not found in ngrok API after 90 seconds.");
 }
 
-const expo = spawn("npx", ["expo", "start", "--tunnel", "--offline", "--port", port], {
+const expo = spawn("npx", ["expo", "start", "--tunnel", "--port", port], {
   env: {
     ...process.env,
     CI: "false",
+    EXPO_RAILWAY_ANONYMOUS: "1",
     EXPO_NO_TELEMETRY: "1",
   },
   stdio: ["ignore", "pipe", "pipe"],

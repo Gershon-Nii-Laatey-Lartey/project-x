@@ -15,28 +15,53 @@ const asyncNgrokPath = path.join(
   "server",
   "AsyncNgrok.js",
 );
+const userActionsPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "expo",
+  "node_modules",
+  "@expo",
+  "cli",
+  "build",
+  "src",
+  "api",
+  "user",
+  "actions.js",
+);
 
-const original = "const TUNNEL_TIMEOUT = 10 * 1000;";
-const patched = "const TUNNEL_TIMEOUT = 60 * 1000;";
+function patchFile(filePath, original, patched, description) {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`${description} file not found at ${filePath}`);
+    return;
+  }
 
-if (!fs.existsSync(asyncNgrokPath)) {
-  console.warn(`Expo AsyncNgrok file not found at ${asyncNgrokPath}`);
-  process.exit(0);
+  const source = fs.readFileSync(filePath, "utf8");
+
+  if (source.includes(patched)) {
+    console.log(`${description} already patched.`);
+    return;
+  }
+
+  if (!source.includes(original)) {
+    console.warn(`${description} pattern not found; continuing without patch.`);
+    return;
+  }
+
+  fs.writeFileSync(filePath, source.replace(original, patched));
+  console.log(`Patched ${description}.`);
 }
 
-const source = fs.readFileSync(asyncNgrokPath, "utf8");
+patchFile(
+  asyncNgrokPath,
+  "const TUNNEL_TIMEOUT = 10 * 1000;",
+  "const TUNNEL_TIMEOUT = 60 * 1000;",
+  "Expo ngrok timeout to 60 seconds",
+);
 
-if (source.includes(patched)) {
-  console.log("Expo ngrok timeout already patched.");
-  process.exit(0);
-}
-
-if (!source.includes(original)) {
-  console.warn(
-    "Expo ngrok timeout pattern not found; continuing without patch.",
-  );
-  process.exit(0);
-}
-
-fs.writeFileSync(asyncNgrokPath, source.replace(original, patched));
-console.log("Patched Expo ngrok timeout to 60 seconds.");
+patchFile(
+  userActionsPath,
+  "const value = await (0, _prompts.selectAsync)",
+  "if (process.env.EXPO_RAILWAY_ANONYMOUS === '1') {\n        return null;\n    }\n    const value = await (0, _prompts.selectAsync)",
+  "Expo Railway anonymous login prompt",
+);
