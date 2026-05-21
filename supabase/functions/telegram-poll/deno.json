@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "telegram": "npm:telegram@2.26.22",
+    "telegram/sessions": "npm:telegram@2.26.22/sessions",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.49.1"
+  }
+}
