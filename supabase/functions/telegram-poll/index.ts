@@ -327,6 +327,7 @@ async function pollChannels() {
             mediaFileId = storagePath;
           }
         } else if (msg.media_url && msg.media_type === "photo_album") {
+          // Albums must be stored image-by-image because Telegram CDN links can expire independently.
           let photoUrls: string[] = [];
           try {
             const parsed = JSON.parse(msg.media_url);
