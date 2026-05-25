@@ -39,6 +39,38 @@ type CasioTelegramProps = {
   onClose: () => void;
 };
 
+type TelegramImageProps = {
+  uri: string;
+  isGrid: boolean;
+  onOpen: () => void;
+};
+
+const TelegramImage = ({ uri, isGrid, onOpen }: TelegramImageProps) => {
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <Pressable
+      onPress={onOpen}
+      style={isGrid ? styles.msgImageGridItem : styles.msgImageSingle}
+      disabled={failed}
+    >
+      {failed ? (
+        <View style={isGrid ? styles.msgImagePlaceholderGrid : styles.msgImagePlaceholderFull}>
+          <Ionicons name="image-outline" size={18} color="rgba(0,51,153,0.45)" />
+          <Text style={styles.msgImagePlaceholderText}>IMAGE UNAVAILABLE</Text>
+        </View>
+      ) : (
+        <ExpoImage
+          source={{ uri }}
+          style={isGrid ? styles.msgImageThumb : styles.msgImageFull}
+          contentFit="cover"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </Pressable>
+  );
+};
+
 async function callEdgeFunction(name: string, body?: Record<string, unknown>, method = 'POST') {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
   const res = await fetch(url, {
@@ -64,7 +96,6 @@ export const CasioTelegram = ({ onClose }: CasioTelegramProps) => {
   const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const [savingSubject, setSavingSubject] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     loadChannels();
@@ -292,7 +323,9 @@ export const CasioTelegram = ({ onClose }: CasioTelegramProps) => {
               if (msg.media_url && (msg.media_type === 'photo' || msg.media_type === 'photo_album')) {
                 try {
                   const parsed = JSON.parse(msg.media_url);
-                  if (Array.isArray(parsed)) imageUrls = parsed;
+                  if (Array.isArray(parsed)) {
+                    imageUrls = parsed.filter((url): url is string => typeof url === 'string' && url.length > 0);
+                  }
                   else imageUrls = [msg.media_url];
                 } catch {
                   imageUrls = [msg.media_url];
@@ -304,12 +337,12 @@ export const CasioTelegram = ({ onClose }: CasioTelegramProps) => {
                 {imageUrls.length > 0 && (
                   <View style={imageUrls.length > 1 ? styles.msgImageGrid : undefined}>
                     {imageUrls.map((url, idx) => (
-                      <Pressable key={idx} onPress={() => setExpandedImage(url)}
-                        style={imageUrls.length > 1 ? styles.msgImageGridItem : styles.msgImageSingle}>
-                        <ExpoImage source={{ uri: url }}
-                          style={imageUrls.length > 1 ? styles.msgImageThumb : styles.msgImageFull}
-                          contentFit="cover" />
-                      </Pressable>
+                      <TelegramImage
+                        key={`${url}-${idx}`}
+                        uri={url}
+                        isGrid={imageUrls.length > 1}
+                        onOpen={() => setExpandedImage(url)}
+                      />
                     ))}
                   </View>
                 )}
@@ -515,10 +548,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,51,153,0.04)',
   },
   msgImageFull: {
-    width: '50%',
+    width: '100%',
     height: 100,
     borderRadius: 6,
     backgroundColor: 'rgba(0,51,153,0.04)',
+  },
+  msgImagePlaceholderGrid: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,51,153,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  msgImagePlaceholderFull: {
+    width: '100%',
+    height: 100,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,51,153,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  msgImagePlaceholderText: {
+    fontFamily: 'DotGothic16',
+    fontSize: 8,
+    color: 'rgba(0,51,153,0.55)',
   },
   msgText: {
     fontFamily: 'DotGothic16',

@@ -34,16 +34,32 @@ interface ScrapedMessage {
   sent_at: string | null;
 }
 
+const telegramFetchHeaders = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "Referer": "https://t.me/",
+};
+
+function normalizeTelegramUrl(url: string): string {
+  if (url.startsWith("//")) return `https:${url}`;
+  if (url.startsWith("/")) return `https://t.me${url}`;
+  return url;
+}
+
+function extractStyleUrl(style: string): string | null {
+  const match = style.match(/background-image:\s*url\((['"]?)(.*?)\1\)/i);
+  return match?.[2] ? normalizeTelegramUrl(match[2]) : null;
+}
+
+function addPhotoUrl(urls: string[], url: string | null) {
+  if (url && !urls.includes(url)) urls.push(url);
+}
+
 async function scrapeChannel(
   username: string,
 ): Promise<{ messages: ScrapedMessage[]; photoUrl: string | null }> {
   const url = `https://t.me/s/${username}`;
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    },
-  });
+  const res = await fetch(url, { headers: telegramFetchHeaders });
 
   if (!res.ok) {
     console.error(`Failed to fetch ${url}: ${res.status}`);
@@ -54,9 +70,8 @@ async function scrapeChannel(
   const doc = new DOMParser().parseFromString(html, "text/html");
   if (!doc) return { messages: [], photoUrl: null };
 
-  const photoUrl =
-    doc.querySelector(".tgme_page_photo_image img")?.getAttribute("src") ||
-    null;
+  const photoUrl = doc.querySelector(".tgme_page_photo_image img")
+    ?.getAttribute("src");
 
   const messages: ScrapedMessage[] = [];
   const messageEls = doc.querySelectorAll(".tgme_widget_message_wrap");
@@ -87,21 +102,14 @@ async function scrapeChannel(
       const photoUrls: string[] = [];
 
       for (const pw of allPhotoWraps) {
-        const style = pw.getAttribute("style") || "";
-        const bgMatch = style.match(/background-image:\s*url\('([^']+)'\)/);
-        if (bgMatch) {
-          photoUrls.push(bgMatch[1]);
-        }
+        addPhotoUrl(photoUrls, extractStyleUrl(pw.getAttribute("style") || ""));
         // Also check child .tgme_widget_message_photo for background-image
         const photoChild = pw.querySelector(".tgme_widget_message_photo");
         if (photoChild) {
-          const childStyle = photoChild.getAttribute("style") || "";
-          const childMatch = childStyle.match(
-            /background-image:\s*url\('([^']+)'\)/,
+          addPhotoUrl(
+            photoUrls,
+            extractStyleUrl(photoChild.getAttribute("style") || ""),
           );
-          if (childMatch && !photoUrls.includes(childMatch[1])) {
-            photoUrls.push(childMatch[1]);
-          }
         }
       }
 
@@ -149,7 +157,10 @@ async function scrapeChannel(
     }
   }
 
-  return { messages, photoUrl };
+  return {
+    messages,
+    photoUrl: photoUrl ? normalizeTelegramUrl(photoUrl) : null,
+  };
 }
 
 async function downloadAndStore(
@@ -157,13 +168,20 @@ async function downloadAndStore(
   channelName: string,
   msgId: number,
   supabase: ReturnType<typeof getSupabase>,
+  index?: number,
 ): Promise<{ storedUrl: string | null; storagePath: string | null }> {
   try {
-    const res = await fetch(mediaUrl);
+    const res = await fetch(mediaUrl, { headers: telegramFetchHeaders });
     if (!res.ok) return { storedUrl: null, storagePath: null };
 
     const buffer = await res.arrayBuffer();
     const contentType = res.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) {
+      console.error(
+        `Unexpected media content-type for ${mediaUrl}: ${contentType}`,
+      );
+      return { storedUrl: null, storagePath: null };
+    }
     const ext = contentType.includes("png")
       ? "png"
       : contentType.includes("webp")
@@ -171,7 +189,8 @@ async function downloadAndStore(
         : "jpg";
 
     const safeName = channelName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const storagePath = `telegram/${safeName}/${msgId}.${ext}`;
+    const suffix = index === undefined ? "" : `_${index + 1}`;
+    const storagePath = `telegram/${safeName}/${msgId}${suffix}.${ext}`;
 
     const { error } = await supabase.storage
       .from("papers")
@@ -231,7 +250,9 @@ async function pollChannels() {
           `[${channel.channel_username}] Attempting to download and save avatar...`,
         );
         try {
-          const photoRes = await fetch(photoUrl);
+          const photoRes = await fetch(photoUrl, {
+            headers: telegramFetchHeaders,
+          });
           console.log(
             `[${channel.channel_username}] Fetch avatar status: ${photoRes.status}`,
           );
@@ -288,8 +309,7 @@ async function pollChannels() {
       }
 
       for (const msg of messages) {
-        // Skip already-seen messages
-        if (msg.telegram_message_id <= (channel.last_message_id ?? 0)) continue;
+        const isNew = msg.telegram_message_id > (channel.last_message_id ?? 0);
 
         // Download and store media if present
         let finalMediaUrl = msg.media_url;
@@ -306,6 +326,33 @@ async function pollChannels() {
             finalMediaUrl = storedUrl;
             mediaFileId = storagePath;
           }
+        } else if (msg.media_url && msg.media_type === "photo_album") {
+          let photoUrls: string[] = [];
+          try {
+            const parsed = JSON.parse(msg.media_url);
+            if (Array.isArray(parsed)) photoUrls = parsed;
+          } catch {
+            photoUrls = [msg.media_url];
+          }
+          const storedUrls: string[] = [];
+          const storagePaths: string[] = [];
+
+          for (let i = 0; i < photoUrls.length; i++) {
+            const { storedUrl, storagePath } = await downloadAndStore(
+              photoUrls[i],
+              channel.channel_name,
+              msg.telegram_message_id,
+              supabase,
+              i,
+            );
+            storedUrls.push(storedUrl || photoUrls[i]);
+            if (storagePath) storagePaths.push(storagePath);
+          }
+
+          finalMediaUrl = JSON.stringify(storedUrls);
+          mediaFileId = storagePaths.length > 0
+            ? JSON.stringify(storagePaths)
+            : null;
         }
 
         // Upsert message
@@ -335,9 +382,11 @@ async function pollChannels() {
           continue;
         }
 
-        channelNew++;
-        totalNew++;
-        maxInsertedId = Math.max(maxInsertedId, msg.telegram_message_id);
+        if (isNew) {
+          channelNew++;
+          totalNew++;
+          maxInsertedId = Math.max(maxInsertedId, msg.telegram_message_id);
+        }
       }
 
       // Only advance the cursor for messages that were actually inserted.
