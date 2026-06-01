@@ -25,9 +25,8 @@ const PLOT_HEIGHT = 160;
 const PLOT_WIDTH = 300;
 
 export const CasioChart: React.FC<CasioChartProps> = ({ data }) => {
-    if (!data || !data.data || data.data.length === 0) return null;
-
-    const points = data.data;
+    const points = Array.isArray(data?.data) ? data.data : [];
+    if (points.length === 0) return null;
 
     // Find ranges
     const minX = Math.min(...points.map(p => p.x));
@@ -48,7 +47,7 @@ export const CasioChart: React.FC<CasioChartProps> = ({ data }) => {
             <View style={styles.content}>
                 {/* Y Axis Scale */}
                 <View style={styles.yScaleArea}>
-                    {data.scales?.y?.map((val, idx) => (
+                    {Array.isArray(data.scales?.y) && data.scales.y.map((val, idx) => (
                         <View key={idx} style={[styles.tickY, { top: getY(val) }]}>
                             <Text style={styles.tickText}>{val}</Text>
                             <View style={styles.tickLineY} />
@@ -124,7 +123,7 @@ export const CasioChart: React.FC<CasioChartProps> = ({ data }) => {
 
             {/* X Axis Scale */}
             <View style={styles.xScaleArea}>
-                {data.scales?.x?.map((val, idx) => (
+                {Array.isArray(data.scales?.x) && data.scales.x.map((val, idx) => (
                     <View key={idx} style={[styles.tickX, { left: getX(val) + 33 }]}>
                         <View style={styles.tickLineX} />
                         <Text style={styles.tickText}>{val}</Text>

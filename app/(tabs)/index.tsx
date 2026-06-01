@@ -12,6 +12,9 @@ import { LCDGrid } from '@/components/lcd-grid';
 import { MathRenderer } from '@/components/math-renderer';
 import { RadialMenu } from '@/components/radial-menu';
 import { SidebarKeyboard } from '@/components/sidebar-keyboard';
+import { isChartLikePayload, normalizeChartData } from '@/lib/ai-chart';
+import { normalizeTableData, parseMarkdownTable, splitMarkdownTables } from '@/lib/ai-table';
+import { CASIO_AI_URL } from '@/lib/casio-ai';
 import { supabase } from '@/lib/supabase';
 import { DotGothic16_400Regular, useFonts } from '@expo-google-fonts/dotgothic16';
 import { Ionicons } from '@expo/vector-icons';
@@ -338,11 +341,10 @@ export default function HomeScreen() {
     setAppMode('chat');
 
     try {
-      const response = await fetch('https://jbhrxzrzahzxbhtzofvc.supabase.co/functions/v1/casio-ai', {
+      const response = await fetch(CASIO_AI_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubWFyaGZjZ3BraWNtYnNkeGtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NDU4MTMsImV4cCI6MjA4NjEyMTgxM30.y-HPGeZSKSPv_1f7sRtA2LnACFXj5zH0oQpcZ0k7KdI',
         },
         body: JSON.stringify({
           image: `data:image/jpeg;base64,${base64.replace(/\s/g, '')}`,
@@ -410,11 +412,10 @@ export default function HomeScreen() {
     if (!customHistory) setMessages(currentMessages);
 
     try {
-      const response = await fetch('https://jbhrxzrzahzxbhtzofvc.supabase.co/functions/v1/casio-ai', {
+      const response = await fetch(CASIO_AI_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubWFyaGZjZ3BraWNtYnNkeGtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NDU4MTMsImV4cCI6MjA4NjEyMTgxM30.y-HPGeZSKSPv_1f7sRtA2LnACFXj5zH0oQpcZ0k7KdI',
         },
         body: JSON.stringify({
           images: base64Images,
@@ -721,29 +722,69 @@ export default function HomeScreen() {
                                           style={{ width: 32, height: 32, borderRadius: 4, marginBottom: 4, marginRight: '100%', borderWidth: 1, borderColor: '#003399' }}
                                         />
                                       )}
-                                      {msg.content.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|(?<!\$)\$[^\$]+?\$(?!\$)|```(?:chart|table|sketch)[\s\S]*?```)/g).map((part, pIdx) => {
-                                        if ((part.startsWith('```chart') || part.startsWith('```table') || part.startsWith('```sketch')) && part.endsWith('```')) {
+                                      {msg.content.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|(?<!\$)\$[^\$]+?\$(?!\$)|```(?:chart|table|sketch|json)[\s\S]*?```)/g).map((part, pIdx) => {
+                                        const isFencedBlock =
+                                          (part.startsWith('```chart') ||
+                                            part.startsWith('```table') ||
+                                            part.startsWith('```sketch') ||
+                                            part.startsWith('```json')) &&
+                                          part.endsWith('```');
+
+                                        if (isFencedBlock) {
                                           const isChart = part.startsWith('```chart');
                                           const isSketch = part.startsWith('```sketch');
-                                          const jsonStr = part.replace(/```(chart|table|sketch)\n?|\n?```/g, '').trim();
+                                          const isTable = part.startsWith('```table');
+                                          const jsonStr = part.replace(/```\w+\n?|\n?```/g, '').trim();
                                           try {
                                             const data = JSON.parse(jsonStr);
-                                            if (isSketch) return (
-                                              <View key={pIdx} style={{ width: '100%' }}>
-                                                <CasioSketch data={data} />
-                                              </View>
-                                            );
-                                            return isChart ? (
-                                              <View key={pIdx} style={{ width: '100%' }}>
-                                                <CasioChart data={data} />
-                                              </View>
-                                            ) : (
-                                              <View key={pIdx} style={{ width: '100%' }}>
-                                                <CasioTable data={data} />
-                                              </View>
-                                            );
+                                            const chartData =
+                                              isChart || isChartLikePayload(data)
+                                                ? normalizeChartData(data)
+                                                : null;
+                                            if (chartData) {
+                                              return (
+                                                <View key={pIdx} style={{ width: '100%' }}>
+                                                  <CasioChart data={chartData} />
+                                                </View>
+                                              );
+                                            }
+                                            const tableData = normalizeTableData(data);
+                                            if (tableData) {
+                                              return (
+                                                <View key={pIdx} style={{ width: '100%' }}>
+                                                  <CasioTable data={tableData} />
+                                                </View>
+                                              );
+                                            }
+                                            if (isSketch) {
+                                              return (
+                                                <View key={pIdx} style={{ width: '100%' }}>
+                                                  <CasioSketch data={data} />
+                                                </View>
+                                              );
+                                            }
+                                            if (isChart) {
+                                              return (
+                                                <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
+                                                  [ERROR PARSING CHART]
+                                                </Text>
+                                              );
+                                            }
+                                            if (isTable) {
+                                              return (
+                                                <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
+                                                  [ERROR PARSING TABLE]
+                                                </Text>
+                                              );
+                                            }
+                                            // Non-table ```json — render below as markdown
+                                            part = `\`\`\`\n${jsonStr}\n\`\`\``;
                                           } catch (e) {
-                                            return <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>[ERROR PARSING {isSketch ? 'SKETCH' : (isChart ? 'CHART' : 'TABLE')}]</Text>;
+                                            return (
+                                              <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
+                                                [ERROR PARSING {isSketch ? 'SKETCH' : isChart ? 'CHART' : isTable ? 'TABLE' : 'JSON'}]
+                                              </Text>
+                                            );
                                           }
                                         }
 
@@ -771,72 +812,89 @@ export default function HomeScreen() {
                                         if (part.endsWith(' ')) {
                                           part = part.slice(0, -1) + '\u00A0';
                                         }
+
+                                        const markdownStyle = {
+                                          body: {
+                                            width: isBlock ? '100%' : 'auto',
+                                            fontFamily: 'DotGothic16',
+                                            fontSize: appMode === 'calculator' ? 44 : (msg.role === 'ai' ? 18 : 14),
+                                            lineHeight: appMode === 'calculator' ? 48 : (msg.role === 'ai' ? 22 : 18),
+                                            fontWeight: appMode === 'calculator' ? '900' : (msg.role === 'ai' ? '700' : '800'),
+                                            color: '#003399',
+                                          },
+                                          text: {
+                                            fontFamily: 'DotGothic16',
+                                            fontSize: appMode === 'calculator' ? 44 : (msg.role === 'ai' ? 18 : 14),
+                                            lineHeight: appMode === 'calculator' ? 48 : (msg.role === 'ai' ? 22 : 18),
+                                            fontWeight: appMode === 'calculator' ? '900' : (msg.role === 'ai' ? '700' : '800'),
+                                            color: '#003399',
+                                          },
+                                          paragraph: {
+                                            marginTop: 0,
+                                            marginBottom: 0,
+                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            alignItems: 'flex-start',
+                                            justifyContent: 'flex-start',
+                                          },
+                                          strong: {
+                                            fontFamily: 'DotGothic16',
+                                            fontWeight: '900',
+                                            color: '#004de6',
+                                          },
+                                          em: {
+                                            fontFamily: 'DotGothic16',
+                                            fontStyle: 'italic',
+                                            color: '#004de6',
+                                          },
+                                          block: {
+                                            marginBottom: 10,
+                                          },
+                                          fence: {
+                                            backgroundColor: 'transparent',
+                                            borderColor: 'transparent',
+                                            color: '#003399',
+                                            fontFamily: 'DotGothic16',
+                                            padding: 0,
+                                            marginTop: 0,
+                                          },
+                                          code_block: {
+                                            backgroundColor: 'transparent',
+                                            borderColor: 'transparent',
+                                            color: '#003399',
+                                            fontFamily: 'DotGothic16',
+                                            padding: 0,
+                                          },
+                                          code_inline: {
+                                            backgroundColor: 'transparent',
+                                            borderColor: 'transparent',
+                                            color: '#003399',
+                                            fontFamily: 'DotGothic16',
+                                            padding: 0,
+                                          },
+                                        } as const;
+
                                         return (
-                                          <Markdown
-                                            key={pIdx}
-                                            style={{
-                                              body: {
-                                                width: isBlock ? '100%' : 'auto',
-                                                fontFamily: 'DotGothic16',
-                                                fontSize: appMode === 'calculator' ? 44 : (msg.role === 'ai' ? 18 : 14),
-                                                lineHeight: appMode === 'calculator' ? 48 : (msg.role === 'ai' ? 22 : 18),
-                                                fontWeight: appMode === 'calculator' ? '900' : (msg.role === 'ai' ? '700' : '800'),
-                                                color: '#003399',
-                                              },
-                                              text: {
-                                                fontFamily: 'DotGothic16',
-                                                fontSize: appMode === 'calculator' ? 44 : (msg.role === 'ai' ? 18 : 14),
-                                                lineHeight: appMode === 'calculator' ? 48 : (msg.role === 'ai' ? 22 : 18),
-                                                fontWeight: appMode === 'calculator' ? '900' : (msg.role === 'ai' ? '700' : '800'),
-                                                color: '#003399',
-                                              },
-                                              paragraph: {
-                                                marginTop: 0,
-                                                marginBottom: 0,
-                                                flexWrap: 'wrap',
-                                                flexDirection: 'row',
-                                                alignItems: 'flex-start',
-                                                justifyContent: 'flex-start',
-                                              },
-                                              strong: {
-                                                fontFamily: 'DotGothic16',
-                                                fontWeight: '900',
-                                                color: '#004de6',
-                                              },
-                                              em: {
-                                                fontFamily: 'DotGothic16',
-                                                fontStyle: 'italic',
-                                                color: '#004de6',
-                                              },
-                                              block: {
-                                                marginBottom: 10,
-                                              },
-                                              fence: {
-                                                backgroundColor: 'transparent',
-                                                borderColor: 'transparent',
-                                                color: '#003399',
-                                                fontFamily: 'DotGothic16',
-                                                padding: 0,
-                                                marginTop: 0,
-                                              },
-                                              code_block: {
-                                                backgroundColor: 'transparent',
-                                                borderColor: 'transparent',
-                                                color: '#003399',
-                                                fontFamily: 'DotGothic16',
-                                                padding: 0,
-                                              },
-                                              code_inline: {
-                                                backgroundColor: 'transparent',
-                                                borderColor: 'transparent',
-                                                color: '#003399',
-                                                fontFamily: 'DotGothic16',
-                                                padding: 0,
+                                          <React.Fragment key={pIdx}>
+                                            {splitMarkdownTables(part).map((segment, sIdx) => {
+                                              if (segment.type === 'table') {
+                                                const tableData = parseMarkdownTable(segment.value);
+                                                if (tableData) {
+                                                  return (
+                                                    <View key={`${pIdx}-${sIdx}`} style={{ width: '100%' }}>
+                                                      <CasioTable data={tableData} />
+                                                    </View>
+                                                  );
+                                                }
                                               }
-                                            }}
-                                          >
-                                            {part}
-                                          </Markdown>
+                                              if (!segment.value) return null;
+                                              return (
+                                                <Markdown key={`${pIdx}-${sIdx}`} style={markdownStyle}>
+                                                  {segment.value}
+                                                </Markdown>
+                                              );
+                                            })}
+                                          </React.Fragment>
                                         );
                                       })}
                                     </View>
