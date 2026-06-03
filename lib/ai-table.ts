@@ -14,16 +14,23 @@ export function normalizeTableData(raw: unknown): TableData | null {
   }
 
   const headers = obj.headers ?? obj.columns;
-  const rows = obj.rows;
+  const rows = obj.rows ?? obj.data;
 
   if (!Array.isArray(headers) || !Array.isArray(rows)) return null;
-  if (!headers.every((h) => typeof h === 'string')) return null;
-  if (!rows.every((r) => Array.isArray(r) && r.every((c) => typeof c === 'string'))) return null;
+
+  // Robustly convert all header items to strings
+  const stringifiedHeaders = headers.map((h) => String(h ?? ''));
+
+  // Robustly convert all row cell items to strings, filtering out non-array rows
+  const stringifiedRows = rows.map((r) => {
+    if (!Array.isArray(r)) return [];
+    return r.map((c) => String(c ?? ''));
+  });
 
   return {
     title: typeof obj.title === 'string' ? obj.title : undefined,
-    headers: headers as string[],
-    rows: rows as string[][],
+    headers: stringifiedHeaders,
+    rows: stringifiedRows,
   };
 }
 

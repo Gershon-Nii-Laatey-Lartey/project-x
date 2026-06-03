@@ -24,7 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Keyboard, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Keyboard, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 
 const SCREEN_WIDTH = 374;
@@ -780,6 +780,16 @@ export default function HomeScreen() {
                                             // Non-table ```json — render below as markdown
                                             part = `\`\`\`\n${jsonStr}\n\`\`\``;
                                           } catch (e) {
+                                            if (isSketch) {
+                                              const formattedSketch = jsonStr.replace(/ /g, '\u00A0');
+                                              return (
+                                                <View key={pIdx} style={styles.asciiSketchContainer}>
+                                                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={{ flexGrow: 1 }}>
+                                                    <Text style={styles.asciiSketchText}>{formattedSketch}</Text>
+                                                  </ScrollView>
+                                                </View>
+                                              );
+                                            }
                                             return (
                                               <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
                                                 [ERROR PARSING {isSketch ? 'SKETCH' : isChart ? 'CHART' : isTable ? 'TABLE' : 'JSON'}]
@@ -1871,6 +1881,21 @@ const styles = StyleSheet.create({
     fontFamily: 'DotGothic16',
     fontSize: 10,
     fontWeight: '900',
+    color: '#003399',
+  },
+  asciiSketchContainer: {
+    width: '100%',
+    marginVertical: 10,
+    backgroundColor: 'rgba(0, 51, 153, 0.03)',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 51, 153, 0.15)',
+    padding: 6,
+  },
+  asciiSketchText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 10,
+    lineHeight: 12,
     color: '#003399',
   },
 });
