@@ -771,6 +771,14 @@ export default function HomeScreen() {
                                               );
                                             }
                                             if (isTable) {
+                                              const markdownTableData = parseMarkdownTable(jsonStr);
+                                              if (markdownTableData) {
+                                                return (
+                                                  <View key={pIdx} style={{ width: '100%' }}>
+                                                    <CasioTable data={markdownTableData} />
+                                                  </View>
+                                                );
+                                              }
                                               return (
                                                 <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
                                                   [ERROR PARSING TABLE]
@@ -789,6 +797,16 @@ export default function HomeScreen() {
                                                   </ScrollView>
                                                 </View>
                                               );
+                                            }
+                                            if (isTable) {
+                                              const markdownTableData = parseMarkdownTable(jsonStr);
+                                              if (markdownTableData) {
+                                                return (
+                                                  <View key={pIdx} style={{ width: '100%' }}>
+                                                    <CasioTable data={markdownTableData} />
+                                                  </View>
+                                                );
+                                              }
                                             }
                                             return (
                                               <Text key={pIdx} style={{ color: '#003399', fontFamily: 'DotGothic16', fontSize: 10 }}>
@@ -952,6 +970,17 @@ export default function HomeScreen() {
                                           }
                                         />
                                       )}
+                                      {appMode === 'chat' && !keyboardVisible && (
+                                        <Pressable
+                                          style={({ pressed }) => [
+                                            styles.inlineExecuteButton,
+                                            pressed && styles.inlineExecuteButtonPressed
+                                          ]}
+                                          onPress={handleEnter}
+                                        >
+                                          <Text style={styles.inlineExecuteText}>EXE</Text>
+                                        </Pressable>
+                                      )}
                                     </View>
                                   </View>
                                 )}
@@ -985,6 +1014,17 @@ export default function HomeScreen() {
                                       </View>
                                     )}
                                     <BlinkingCursor visible={true} style={{ height: 32, alignSelf: 'flex-start' }} />
+                                    {appMode === 'chat' && selectedImages.length > 0 && !keyboardVisible && (
+                                      <Pressable
+                                        style={({ pressed }) => [
+                                          styles.inlineExecuteButton,
+                                          pressed && styles.inlineExecuteButtonPressed
+                                        ]}
+                                        onPress={handleEnter}
+                                      >
+                                        <Text style={styles.inlineExecuteText}>EXE</Text>
+                                      </Pressable>
+                                    )}
                                   </View>
                                 )}
                               </Pressable>
@@ -1897,6 +1937,28 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 12,
     color: '#003399',
+  },
+  inlineExecuteButton: {
+    width: 68,
+    height: 36,
+    backgroundColor: '#74967e',
+    borderWidth: 1.5,
+    borderColor: '#003399',
+    borderRadius: 6,
+    marginLeft: 10,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inlineExecuteButtonPressed: {
+    backgroundColor: 'rgba(0, 51, 153, 0.25)',
+    transform: [{ scale: 0.93 }],
+  },
+  inlineExecuteText: {
+    color: '#003399',
+    fontSize: 14,
+    fontWeight: '900',
+    fontFamily: 'DotGothic16',
   },
 });
 

@@ -4,34 +4,69 @@ export type TableData = {
   rows: string[][];
 };
 
-/** Normalize AI table JSON (```table, ```json, nested `table`, `columns` vs `headers`). */
+/** Normalize AI table JSON (```table, ```json, nested `table`, `columns` vs `headers`, array of objects, or dictionaries). */
 export function normalizeTableData(raw: unknown): TableData | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw) return null;
 
-  let obj = raw as Record<string, unknown>;
-  if (obj.table && typeof obj.table === 'object') {
-    obj = obj.table as Record<string, unknown>;
+  // Case 1: Array of objects (e.g. [{"Q#": "1", "Ans": "A"}])
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return null;
+    const first = raw[0];
+    if (first && typeof first === 'object' && !Array.isArray(first)) {
+      const headers = Object.keys(first);
+      const rows = raw.map((item) => {
+        if (item && typeof item === 'object') {
+          return headers.map((h) => String((item as Record<string, unknown>)[h] ?? ''));
+        }
+        return [];
+      });
+      return {
+        headers,
+        rows,
+      };
+    }
   }
 
-  const headers = obj.headers ?? obj.columns;
-  const rows = obj.rows ?? obj.data;
+  // Case 2: Object with headers/rows or columns/data
+  if (typeof raw === 'object') {
+    let obj = raw as Record<string, unknown>;
+    if (obj.table && typeof obj.table === 'object') {
+      obj = obj.table as Record<string, unknown>;
+    }
 
-  if (!Array.isArray(headers) || !Array.isArray(rows)) return null;
+    const headers = obj.headers ?? obj.columns;
+    const rows = obj.rows ?? obj.data;
 
-  // Robustly convert all header items to strings
-  const stringifiedHeaders = headers.map((h) => String(h ?? ''));
+    if (Array.isArray(headers) && Array.isArray(rows)) {
+      const stringifiedHeaders = headers.map((h) => String(h ?? ''));
+      const stringifiedRows = rows.map((r) => {
+        if (!Array.isArray(r)) return [];
+        return r.map((c) => String(c ?? ''));
+      });
 
-  // Robustly convert all row cell items to strings, filtering out non-array rows
-  const stringifiedRows = rows.map((r) => {
-    if (!Array.isArray(r)) return [];
-    return r.map((c) => String(c ?? ''));
-  });
+      return {
+        title: typeof obj.title === 'string' ? obj.title : undefined,
+        headers: stringifiedHeaders,
+        rows: stringifiedRows,
+      };
+    }
 
-  return {
-    title: typeof obj.title === 'string' ? obj.title : undefined,
-    headers: stringifiedHeaders,
-    rows: stringifiedRows,
-  };
+    // Case 3: Simple flat dictionary (e.g. {"1": "A", "2": "B"})
+    const keys = Object.keys(obj);
+    const isFlat = keys.every((k) => {
+      const val = obj[k];
+      return val === null || typeof val !== 'object';
+    });
+
+    if (isFlat && keys.length > 0) {
+      return {
+        headers: ['Key', 'Value'],
+        rows: keys.map((k) => [k, String(obj[k] ?? '')]),
+      };
+    }
+  }
+
+  return null;
 }
 
 const MARKDOWN_TABLE_RE =
